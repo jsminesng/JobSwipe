@@ -1,5 +1,5 @@
 /** ======================
- * Job-Ting – app.js
+ * JobSwipe – app.js
  * Endless swipe + anytime report
  * API + fallback
  * =====================*/
@@ -8,11 +8,12 @@
 let profile = null;
 
 const STORAGE_KEYS = {
-  PROFILE: "jobting_profile",
-  LIKES: "jobting_likes",
-  PASSES: "jobting_passes",
-  USER: "jobting_user",
-  USERS: "jobting_users",
+  PROFILE: "jobswipe_profile",
+  LIKES: "jobswipe_likes",
+  PASSES: "jobswipe_passes",
+  APPLIED: "jobswipe_applied",
+  USER: "jobswipe_user",
+  USERS: "jobswipe_users",
 };
 
 // UI refs
@@ -30,7 +31,10 @@ const progressFill = $("progressFill");
 const confidenceBadge = $("confidenceBadge");
 const profileSummary = $("profileSummary");
 const topMatches = $("topMatches");
+const highSalaryMatches = $("highSalaryMatches");
+const insightsBadges = $("insightsBadges");
 const favoritesList = $("favoritesList");
+const appliedList = $("appliedList");
 const actionsList = $("actionsList");
 
 // Profile inputs
@@ -40,10 +44,11 @@ const pfSkills = $("pfSkills");
 const pfLocation = $("pfLocation");
 const pfWorkType = $("pfWorkType");
 const pfLevel = $("pfLevel");
+const pfMinSalary = $("pfMinSalary");
 
 // Buttons
 document.addEventListener("DOMContentLoaded", () => {
-  $("mainTitle").onclick = backToWelcome;
+  $("mainTitle").onclick = resetAllData;
   $("loginBtn").onclick = handleLogin;
   $("signupBtn").onclick = handleSignup;
   $("guestBtn").onclick = handleGuest;
@@ -59,6 +64,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("backToSwipe").onclick = backToSwipe;
   $("backToWelcome").onclick = backToWelcome;
   $("copyReport").onclick = copyReportText;
+  $("downloadPDF").onclick = downloadPDF;
+  $("shareReport").onclick = shareReport;
   $("resetDeck").onclick = resetDeck;
 });
 
@@ -70,6 +77,7 @@ let seen = new Set();
 
 let likes = new Set();
 let passes = new Set();
+let applied = new Set();
 
 const CONFIDENCE_TARGET = 20;
 
@@ -89,9 +97,13 @@ function loadUserData() {
   const userPasses = JSON.parse(
     localStorage.getItem(`${STORAGE_KEYS.PASSES}_${userKey}`) || "[]"
   );
+  const userApplied = JSON.parse(
+    localStorage.getItem(`${STORAGE_KEYS.APPLIED}_${userKey}`) || "[]"
+  );
 
   likes = new Set(userLikes);
   passes = new Set(userPasses);
+  applied = new Set(userApplied);
 }
 
 function saveUserData() {
@@ -104,6 +116,10 @@ function saveUserData() {
     `${STORAGE_KEYS.PASSES}_${userKey}`,
     JSON.stringify([...passes])
   );
+  localStorage.setItem(
+    `${STORAGE_KEYS.APPLIED}_${userKey}`,
+    JSON.stringify([...applied])
+  );
 }
 
 /* ---------- Helpers ---------- */
@@ -114,6 +130,195 @@ function shuffle(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+// 연봉 파싱 함수 (다양한 형식 지원)
+function parseSalary(salaryStr) {
+  if (!salaryStr) return null;
+
+  // 숫자만 추출
+  const numbers = salaryStr.match(/\d+/g);
+  if (!numbers || numbers.length === 0) return null;
+
+  // 첫 번째 숫자를 기준으로 연봉 추정
+  let baseSalary = parseInt(numbers[0]);
+
+  // K, M 단위 처리
+  if (salaryStr.includes("K") && !salaryStr.includes("M")) {
+    baseSalary *= 1000;
+  } else if (salaryStr.includes("M")) {
+    baseSalary *= 1000000;
+  }
+
+  // 월급인 경우 연봉으로 변환
+  if (salaryStr.includes("/month") || salaryStr.includes("월")) {
+    baseSalary *= 12;
+  }
+
+  // 범위가 있는 경우 평균값 사용
+  if (numbers.length > 1) {
+    const secondNum = parseInt(numbers[1]);
+    if (salaryStr.includes("K") && !salaryStr.includes("M")) {
+      baseSalary = (baseSalary + secondNum * 1000) / 2;
+    } else if (salaryStr.includes("M")) {
+      baseSalary = (baseSalary + secondNum * 1000000) / 2;
+    } else {
+      baseSalary = (baseSalary + secondNum) / 2;
+    }
+  }
+
+  return Math.round(baseSalary);
+}
+
+// 인사이트 분석 함수
+function generateInsights() {
+  const likedJobs = [...likes]
+    .map((id) => deck.find((job) => job.id === id))
+    .filter(Boolean);
+
+  const insights = [];
+
+  if (likedJobs.length === 0) return insights;
+
+  // 원격 근무 선호도 분석
+  const remoteJobs = likedJobs.filter(
+    (job) => job.workType === "remote"
+  ).length;
+  const remotePercentage = (remoteJobs / likedJobs.length) * 100;
+  if (remotePercentage >= 70) {
+    insights.push({
+      type: "remote",
+      text: `You liked ${Math.round(remotePercentage)}% remote jobs`,
+      emoji: "🏠",
+      color: "bg-blue-100 text-blue-800",
+    });
+  }
+
+  // 회사 크기 선호도 분석 (스폰서드 = 대기업)
+  const sponsoredJobs = likedJobs.filter((job) => job.sponsored).length;
+  const sponsoredPercentage = (sponsoredJobs / likedJobs.length) * 100;
+  if (sponsoredPercentage >= 60) {
+    insights.push({
+      type: "big-company",
+      text: `You prefer big companies (${Math.round(sponsoredPercentage)}%)`,
+      emoji: "🏢",
+      color: "bg-purple-100 text-purple-800",
+    });
+  }
+
+  // 연봉 선호도 분석
+  const jobsWithSalary = likedJobs.filter((job) => job.salary).length;
+  if (jobsWithSalary > 0) {
+    const salaries = likedJobs
+      .filter((job) => job.salary)
+      .map((job) => parseSalary(job.salary))
+      .filter((salary) => salary > 0);
+
+    if (salaries.length > 0) {
+      const avgSalary = salaries.reduce((a, b) => a + b, 0) / salaries.length;
+      if (avgSalary > 100000) {
+        insights.push({
+          type: "high-salary",
+          text: `You prefer high-paying jobs (avg $${Math.round(
+            avgSalary
+          ).toLocaleString()})`,
+          emoji: "💰",
+          color: "bg-green-100 text-green-800",
+        });
+      }
+    }
+  }
+
+  // 기술 스택 선호도 분석
+  const allSkills = likedJobs.flatMap((job) => job.skills || []);
+  const skillCounts = {};
+  allSkills.forEach((skill) => {
+    skillCounts[skill] = (skillCounts[skill] || 0) + 1;
+  });
+
+  const topSkills = Object.entries(skillCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 3);
+
+  if (topSkills.length > 0) {
+    insights.push({
+      type: "skills",
+      text: `Top skills: ${topSkills.map(([skill]) => skill).join(", ")}`,
+      emoji: "⚡",
+      color: "bg-orange-100 text-orange-800",
+    });
+  }
+
+  // 위치 선호도 분석
+  const locations = likedJobs.map((job) => job.location).filter(Boolean);
+  const locationCounts = {};
+  locations.forEach((location) => {
+    locationCounts[location] = (locationCounts[location] || 0) + 1;
+  });
+
+  const topLocation = Object.entries(locationCounts).sort(
+    ([, a], [, b]) => b - a
+  )[0];
+
+  if (topLocation && topLocation[1] >= 2) {
+    insights.push({
+      type: "location",
+      text: `You like jobs in ${topLocation[0]} (${topLocation[1]} times)`,
+      emoji: "📍",
+      color: "bg-pink-100 text-pink-800",
+    });
+  }
+
+  // 스와이프 패턴 분석
+  const totalSwipes = likes.size + passes.size;
+  const likeRate = (likes.size / totalSwipes) * 100;
+
+  if (likeRate < 20) {
+    insights.push({
+      type: "selective",
+      text: `You're very selective (${Math.round(likeRate)}% like rate)`,
+      emoji: "🎯",
+      color: "bg-red-100 text-red-800",
+    });
+  } else if (likeRate > 60) {
+    insights.push({
+      type: "open",
+      text: `You're open to many opportunities (${Math.round(
+        likeRate
+      )}% like rate)`,
+      emoji: "🌟",
+      color: "bg-yellow-100 text-yellow-800",
+    });
+  }
+
+  return insights;
+}
+
+// 개선된 스와이프 애니메이션
+function enhancedSwipeAnimation(card, isLike) {
+  if (isLike) {
+    // 카드 애니메이션 강화
+    card.style.transition =
+      "transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+    card.style.transform = "translateX(100vw) rotate(20deg) scale(1.1)";
+    card.style.boxShadow = "0 0 30px rgba(34, 197, 94, 0.5)";
+  } else {
+    // 패스 애니메이션
+    card.style.transition =
+      "transform 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94)";
+    card.style.transform = "translateX(-100vw) rotate(-20deg) scale(0.9)";
+    card.style.boxShadow = "0 0 30px rgba(239, 68, 68, 0.5)";
+  }
+}
+
+function sortJobsByPriority(jobs) {
+  return jobs.sort((a, b) => {
+    // 스폰서드 공고는 약간의 가중치만 주고 랜덤으로 섞기
+    const aWeight = a.sponsored ? Math.random() * 0.3 : Math.random();
+    const bWeight = b.sponsored ? Math.random() * 0.3 : Math.random();
+
+    return aWeight - bWeight;
+  });
 }
 
 /* ---------- Skill Tags (fallback only) ---------- */
@@ -169,7 +374,7 @@ async function fetchNextBatch() {
       const companies = [...new Set(jobs.map((job) => job.company))];
       if (companies.length <= 1) {
         console.log("다양한 회사가 없어서 Fallback 데이터 사용");
-        return shuffle(JOBS_FALLBACK).slice(0, 30);
+        return sortJobsByPriority(JOBS_FALLBACK).slice(0, 30);
       }
 
       return shuffle(jobs).slice(0, 30);
@@ -184,7 +389,7 @@ async function fetchNextBatch() {
     JOBS_FALLBACK.length,
     "개 공고"
   );
-  return shuffle(JOBS_FALLBACK).slice(0, 30);
+  return sortJobsByPriority(JOBS_FALLBACK).slice(0, 30);
 }
 
 /* ---------- Login Functions ---------- */
@@ -290,6 +495,7 @@ function onSaveProfile() {
     location: pfLocation.value.trim(),
     workType: pfWorkType.value,
     level: pfLevel.value,
+    minSalary: pfMinSalary.value ? parseInt(pfMinSalary.value) : null,
   };
 
   // 사용자별 프로필 저장
@@ -324,6 +530,7 @@ function onLoadProfile() {
   pfLocation.value = profile.location || "";
   pfWorkType.value = profile.workType || "";
   pfLevel.value = profile.level || "any";
+  pfMinSalary.value = profile.minSalary || "";
   const set = new Set(profile.skills || []);
   pfSkills.querySelectorAll(".skill-tag").forEach((b) => {
     b.classList.toggle("selected", set.has(b.textContent));
@@ -336,6 +543,7 @@ function onClearProfile() {
   pfName.value = pfMajor.value = pfLocation.value = "";
   pfWorkType.value = "";
   pfLevel.value = "any";
+  pfMinSalary.value = "";
   pfSkills
     .querySelectorAll(".skill-tag")
     .forEach((b) => b.classList.remove("selected"));
@@ -344,10 +552,19 @@ function onClearProfile() {
 
 /* ---------- Deck & Swipe ---------- */
 async function startDeck() {
+  console.log("startDeck called");
   deck = [];
   cursor = 0;
   seen = new Set();
   loadUserData(); // 사용자별 데이터 로드
+  console.log(
+    "After loadUserData - likes:",
+    likes.size,
+    "passes:",
+    passes.size,
+    "applied:",
+    applied.size
+  );
   stepNowEl.textContent = likes.size + passes.size;
   updateProgressBar();
   await loadMore();
@@ -389,11 +606,26 @@ function createJobCard(job) {
       <div class="flex items-start gap-4 mb-3">
         ${
           job.logo
-            ? `<img src="${job.logo}" alt="${job.company}" class="w-12 h-12 rounded-lg object-cover flex-shrink-0" onerror="this.style.display='none'">`
-            : ""
+            ? `<div class="w-12 h-12 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0 bg-gradient-to-br from-blue-500 to-purple-600">
+                 <img src="${job.logo}" alt="${
+                job.company
+              }" class="w-full h-full rounded-lg object-cover" onerror="this.parentElement.innerHTML='${job.company
+                .substring(0, 2)
+                .toUpperCase()}'">
+               </div>`
+            : `<div class="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">${
+                job.company ? job.company.substring(0, 2).toUpperCase() : "CO"
+              }</div>`
         }
         <div class="flex-1">
-          <h3 class="text-lg font-bold">${job.title || "Role"}</h3>
+          <div class="flex items-center gap-2 mb-1">
+            <h3 class="text-lg font-bold">${job.title || "Role"}</h3>
+            ${
+              job.sponsored
+                ? '<span class="text-xs bg-gradient-to-r from-purple-500 to-pink-500 text-white px-2 py-1 rounded-full font-semibold">SPONSORED</span>'
+                : ""
+            }
+          </div>
           <p class="text-sm text-slate-600"><span class="company-badge">${
             job.company || "Company"
           }</span> · ${job.location || "—"} · ${job.workType || "Any"} · ${
@@ -413,9 +645,15 @@ function createJobCard(job) {
       </div>
     </div>
     <div class="flex items-center justify-between text-sm text-slate-500 mt-4">
-      <a class="underline hover:text-blue-600" href="${
-        job.applyUrl || "#"
-      }" target="_blank">Apply Now</a>
+      <button 
+        class="apply-btn underline hover:text-blue-600 ${
+          applied.has(job.id) ? "text-green-600 font-semibold" : ""
+        }" 
+        data-job-id="${job.id}"
+        data-apply-url="${job.applyUrl || "#"}"
+      >
+        ${applied.has(job.id) ? "✓ Applied" : "Apply Now"}
+      </button>
       <span class="text-xs">ID: ${job.id}</span>
     </div>
     <div class="swipe-badge swipe-like">LIKE</div>
@@ -425,7 +663,49 @@ function createJobCard(job) {
     if (dir === "right") onSwipe(true);
     else if (dir === "left") onSwipe(false);
   });
+
+  // Apply 버튼 이벤트 리스너 추가
+  const applyBtn = el.querySelector(".apply-btn");
+  if (applyBtn) {
+    applyBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleApplyClick(applyBtn);
+    });
+  }
+
   return el;
+}
+
+// Apply 버튼 클릭 핸들러
+function handleApplyClick(applyBtn) {
+  const jobId = applyBtn.getAttribute("data-job-id");
+  const applyUrl = applyBtn.getAttribute("data-apply-url");
+
+  if (applied.has(jobId)) {
+    // 이미 지원한 경우
+    alert("You have already applied to this job!");
+    return;
+  }
+
+  // 지원 기록에 추가
+  applied.add(jobId);
+  saveUserData();
+
+  // 버튼 상태 업데이트
+  applyBtn.textContent = "✓ Applied";
+  applyBtn.classList.add("text-green-600", "font-semibold");
+  applyBtn.classList.remove("hover:text-blue-600");
+
+  // 성공 메시지
+  alert("Application recorded! Good luck! 🍀");
+
+  // 실제 지원 페이지로 이동 (선택사항)
+  if (applyUrl && applyUrl !== "#") {
+    if (confirm("Would you like to open the application page?")) {
+      window.open(applyUrl, "_blank");
+    }
+  }
 }
 
 /* ---------- Swipe Handlers ---------- */
@@ -436,15 +716,9 @@ function onSwipe(isLike) {
   // 현재 카드 요소 가져오기
   const currentCard = cardStack.querySelector(".job-card");
   if (currentCard) {
-    // 애니메이션 효과 추가
-    currentCard.style.transition = "transform 0.3s ease-out";
-    if (isLike) {
-      currentCard.style.transform = "translateX(100vw) rotate(15deg)";
-      currentCard.classList.add("swipe-right");
-    } else {
-      currentCard.style.transform = "translateX(-100vw) rotate(-15deg)";
-      currentCard.classList.add("swipe-left");
-    }
+    // 개선된 애니메이션 효과 사용
+    enhancedSwipeAnimation(currentCard, isLike);
+    currentCard.classList.add(isLike ? "swipe-right" : "swipe-left");
   }
 
   if (isLike) {
@@ -466,7 +740,7 @@ function onSwipe(isLike) {
   // 애니메이션 완료 후 다음 카드 렌더링
   setTimeout(() => {
     renderTopCard();
-  }, 300);
+  }, 400);
 }
 
 /* ---------- Drag & Drop ---------- */
@@ -600,7 +874,12 @@ function showReport() {
       <div><strong>Location:</strong> ${profile.location || "Any"}</div>
       <div><strong>Work Type:</strong> ${profile.workType || "Any"}</div>
       <div><strong>Level:</strong> ${profile.level || "Any"}</div>
-      <div><strong>Skills:</strong> ${
+      <div><strong>Min Salary:</strong> ${
+        profile.minSalary
+          ? `$${profile.minSalary.toLocaleString()}/year`
+          : "Any"
+      }</div>
+      <div class="md:col-span-2"><strong>Skills:</strong> ${
         profile.skills?.join(", ") || "None selected"
       }</div>
     </div>
@@ -642,6 +921,66 @@ function showReport() {
     )
     .join("");
 
+  // High Salary Matches
+  const highSalaryJobs = matches
+    .filter((job) => job.parsedSalary && job.parsedSalary > 0)
+    .sort((a, b) => b.parsedSalary - a.parsedSalary)
+    .slice(0, 5);
+
+  highSalaryMatches.innerHTML =
+    highSalaryJobs.length > 0
+      ? highSalaryJobs
+          .map(
+            (job) => `
+      <div class="p-4 border-2 border-yellow-200 rounded-lg shadow-sm hover:shadow-md transition-shadow mb-3 bg-gradient-to-r from-yellow-50 to-orange-50">
+        <div class="flex justify-between items-start">
+          <div>
+            <h4 class="font-medium text-lg">${job.title}</h4>
+            <p class="text-sm text-slate-600 mt-1"><span class="company-badge">${
+              job.company
+            }</span> · ${job.location}</p>
+            <p class="text-lg font-bold text-green-600 mt-2">${job.salary}</p>
+            <div class="flex flex-wrap gap-1 mt-2">
+              ${(job.skills || [])
+                .slice(0, 3)
+                .map(
+                  (s) =>
+                    `<span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">${s}</span>`
+                )
+                .join("")}
+            </div>
+          </div>
+          <div class="text-right">
+            <span class="text-xs bg-green-100 text-green-800 px-3 py-2 rounded-full font-medium">
+              ${Math.round(job.score * 100)}% match
+            </span>
+            <div class="text-xs text-slate-500 mt-1">
+              $${job.parsedSalary.toLocaleString()}/year
+            </div>
+          </div>
+        </div>
+      </div>
+    `
+          )
+          .join("")
+      : '<div class="text-center text-slate-500 py-8">No salary information available for your liked jobs.</div>';
+
+  // Insights Badges
+  const insights = generateInsights();
+  insightsBadges.innerHTML =
+    insights.length > 0
+      ? insights
+          .map(
+            (insight) => `
+      <div class="px-4 py-2 rounded-full text-sm font-medium ${insight.color} flex items-center gap-2">
+        <span>${insight.emoji}</span>
+        <span>${insight.text}</span>
+      </div>
+    `
+          )
+          .join("")
+      : '<div class="text-center text-slate-500 py-4">Complete more swipes to see your insights!</div>';
+
   // Favorites
   const favoriteJobs = [...likes]
     .map((id) => deck.find((job) => job.id === id))
@@ -667,6 +1006,30 @@ function showReport() {
   `
     )
     .join("");
+
+  // Applied Jobs
+  const appliedJobs = [...applied]
+    .map((id) => deck.find((job) => job.id === id))
+    .filter(Boolean);
+  appliedList.innerHTML =
+    appliedJobs.length > 0
+      ? appliedJobs
+          .map(
+            (job) => `
+    <li class="p-3 border border-green-200 rounded-lg shadow-sm hover:shadow-md transition-shadow mb-2 bg-green-50">
+      <div class="font-medium text-green-800">${job.title}</div>
+      <div class="text-sm text-green-600">${job.company} · ${job.location}</div>
+      ${
+        job.salary
+          ? `<div class="text-sm font-semibold text-green-700 mt-1">${job.salary}</div>`
+          : ""
+      }
+      <div class="text-xs text-green-500 mt-1">✓ Applied</div>
+    </li>
+  `
+          )
+          .join("")
+      : '<li class="text-slate-500 italic">No applications yet. Start applying to your favorite jobs!</li>';
 
   // Actions
   const actions = [];
@@ -705,18 +1068,87 @@ function backToWelcome() {
 }
 
 function resetDeck() {
+  console.log("resetDeck called");
   if (confirm("Reset all your swipes? This cannot be undone.")) {
+    console.log("User confirmed reset");
+    console.log(
+      "Before reset - likes:",
+      likes.size,
+      "passes:",
+      passes.size,
+      "applied:",
+      applied.size
+    );
+
+    // 데이터 클리어
     likes.clear();
     passes.clear();
-    localStorage.removeItem(STORAGE_KEYS.LIKES);
-    localStorage.removeItem(STORAGE_KEYS.PASSES);
-    startDeck();
+    applied.clear();
+
+    // 로컬스토리지에서 사용자별 데이터 제거
+    const userKey = getUserKey();
+    localStorage.removeItem(`${STORAGE_KEYS.LIKES}_${userKey}`);
+    localStorage.removeItem(`${STORAGE_KEYS.PASSES}_${userKey}`);
+    localStorage.removeItem(`${STORAGE_KEYS.APPLIED}_${userKey}`);
+
+    console.log(
+      "After reset - likes:",
+      likes.size,
+      "passes:",
+      passes.size,
+      "applied:",
+      applied.size
+    );
+
+    // UI 업데이트
+    stepNowEl.textContent = "0";
+    updateProgressBar();
+
+    // 새로운 덱 시작
+    console.log("Starting new deck...");
+    deck = [];
+    cursor = 0;
+    seen = new Set();
+    loadMore().then(() => {
+      renderTopCard();
+    });
   }
+}
+
+// 모든 데이터 리셋하고 웰컴 화면으로 돌아가기
+function resetAllData() {
+  // 모든 데이터 클리어
+  likes.clear();
+  passes.clear();
+  applied.clear();
+  profile = null;
+
+  // 모든 로컬스토리지 데이터 제거
+  const userKey = getUserKey();
+  localStorage.removeItem(`${STORAGE_KEYS.LIKES}_${userKey}`);
+  localStorage.removeItem(`${STORAGE_KEYS.PASSES}_${userKey}`);
+  localStorage.removeItem(`${STORAGE_KEYS.APPLIED}_${userKey}`);
+  localStorage.removeItem(`${STORAGE_KEYS.PROFILE}_${userKey}`);
+
+  // 덱 상태 초기화
+  deck = [];
+  cursor = 0;
+  seen = new Set();
+
+  // 모든 섹션 숨기기
+  loginSection.classList.add("hidden");
+  profileSection.classList.add("hidden");
+  progressSection.classList.add("hidden");
+  deckSection.classList.add("hidden");
+  resultSection.classList.add("hidden");
+
+  // 웰컴 화면 표시
+  welcomeSection.classList.remove("hidden");
 }
 
 function copyReportText() {
   const reportText = `
-Job-Ting Match Report
+JobSwipe Match Report
 ====================
 
 Profile: ${profile.name || "Not specified"}
@@ -724,6 +1156,9 @@ Major: ${profile.major || "Not specified"}
 Location: ${profile.location || "Any"}
 Work Type: ${profile.workType || "Any"}
 Level: ${profile.level || "Any"}
+Min Salary: ${
+    profile.minSalary ? `$${profile.minSalary.toLocaleString()}/year` : "Any"
+  }
 Skills: ${profile.skills?.join(", ") || "None selected"}
 
 Confidence: ${Math.round(
@@ -747,6 +1182,128 @@ Passes: ${passes.size}
   navigator.clipboard.writeText(reportText).then(() => {
     alert("Report copied to clipboard!");
   });
+}
+
+function downloadPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+
+  // 제목
+  doc.setFontSize(20);
+  doc.text("JobSwipe Match Report", 20, 30);
+
+  // 프로필 정보
+  doc.setFontSize(12);
+  let y = 50;
+  doc.text(`Name: ${profile.name || "Not specified"}`, 20, y);
+  y += 10;
+  doc.text(`Major: ${profile.major || "Not specified"}`, 20, y);
+  y += 10;
+  doc.text(`Location: ${profile.location || "Any"}`, 20, y);
+  y += 10;
+  doc.text(`Work Type: ${profile.workType || "Any"}`, 20, y);
+  y += 10;
+  doc.text(`Level: ${profile.level || "Any"}`, 20, y);
+  y += 10;
+  doc.text(
+    `Min Salary: ${
+      profile.minSalary ? `$${profile.minSalary.toLocaleString()}/year` : "Any"
+    }`,
+    20,
+    y
+  );
+  y += 10;
+  doc.text(`Skills: ${profile.skills?.join(", ") || "None selected"}`, 20, y);
+  y += 20;
+
+  // 매칭 정보
+  doc.text(
+    `Confidence: ${Math.round(
+      Math.min((likes.size / CONFIDENCE_TARGET) * 100, 100)
+    )}%`,
+    20,
+    y
+  );
+  y += 10;
+  doc.text(`Total Swipes: ${likes.size + passes.size}`, 20, y);
+  y += 10;
+  doc.text(`Likes: ${likes.size}`, 20, y);
+  y += 10;
+  doc.text(`Passes: ${passes.size}`, 20, y);
+  y += 20;
+
+  // 좋아요한 잡들
+  doc.text("Your Favorite Jobs:", 20, y);
+  y += 10;
+
+  const favoriteJobs = [...likes]
+    .map((id) => deck.find((job) => job.id === id))
+    .filter(Boolean);
+
+  favoriteJobs.forEach((job, index) => {
+    if (y > 250) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.text(`${index + 1}. ${job.title} at ${job.company}`, 30, y);
+    y += 8;
+    if (job.location) {
+      doc.text(`   Location: ${job.location}`, 30, y);
+      y += 8;
+    }
+    if (job.salary) {
+      doc.text(`   Salary: ${job.salary}`, 30, y);
+      y += 8;
+    }
+    y += 5;
+  });
+
+  // PDF 다운로드
+  const fileName = `JobSwipe_Report_${profile.name || "User"}_${
+    new Date().toISOString().split("T")[0]
+  }.pdf`;
+  doc.save(fileName);
+}
+
+function shareReport() {
+  const reportData = {
+    title: "JobSwipe Match Report",
+    text: `Check out my job matches on JobSwipe! I found ${likes.size} great opportunities.`,
+    url: window.location.href,
+  };
+
+  if (navigator.share) {
+    navigator
+      .share(reportData)
+      .then(() => {
+        console.log("Report shared successfully");
+      })
+      .catch((error) => {
+        console.log("Error sharing:", error);
+        fallbackShare();
+      });
+  } else {
+    fallbackShare();
+  }
+}
+
+function fallbackShare() {
+  const shareText = `Check out my JobSwipe match report! I found ${likes.size} great job opportunities. Try JobSwipe at ${window.location.href}`;
+
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(shareText).then(() => {
+      alert("Share link copied to clipboard!");
+    });
+  } else {
+    // Fallback for older browsers
+    const textArea = document.createElement("textarea");
+    textArea.value = shareText;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textArea);
+    alert("Share link copied to clipboard!");
+  }
 }
 
 /* ---------- Matching Algorithm ---------- */
@@ -795,7 +1352,23 @@ function computeMatch() {
       score += (commonSkills.length / Math.max(profile.skills.length, 1)) * 0.3;
     }
 
-    scores.push({ ...job, score });
+    // Salary match
+    if (profile.minSalary && job.salary) {
+      const jobSalary = parseSalary(job.salary);
+      if (jobSalary) {
+        if (jobSalary >= profile.minSalary) {
+          // 연봉이 희망 연봉 이상이면 보너스 점수
+          const salaryRatio = jobSalary / profile.minSalary;
+          score += Math.min(0.2, (salaryRatio - 1) * 0.1);
+        } else {
+          // 연봉이 희망 연봉보다 낮으면 감점
+          const salaryRatio = jobSalary / profile.minSalary;
+          score += (salaryRatio - 1) * 0.1;
+        }
+      }
+    }
+
+    scores.push({ ...job, score, parsedSalary: parseSalary(job.salary) });
   }
 
   return scores.sort((a, b) => b.score - a.score);
@@ -803,6 +1376,50 @@ function computeMatch() {
 
 /* ---------- Fallback Data ---------- */
 const JOBS_FALLBACK = [
+  // 스폰서드 채용공고 (우선 노출)
+  {
+    id: "sponsored-1",
+    company: "Meta",
+    title: "Senior Software Engineer",
+    location: "Menlo Park, CA",
+    workType: "hybrid",
+    level: "any",
+    salary: "$180K - $250K",
+    skills: ["React", "TypeScript", "GraphQL"],
+    logo: "https://logo.clearbit.com/meta.com",
+    applyUrl: "https://meta.com/careers",
+    sponsored: true,
+    priority: 1,
+  },
+  {
+    id: "sponsored-2",
+    company: "Tesla",
+    title: "Full Stack Developer",
+    location: "Austin, TX",
+    workType: "onsite",
+    level: "any",
+    salary: "$150K - $200K",
+    skills: ["Python", "React", "AWS"],
+    logo: "https://logo.clearbit.com/tesla.com",
+    applyUrl: "https://tesla.com/careers",
+    sponsored: true,
+    priority: 2,
+  },
+  {
+    id: "sponsored-3",
+    company: "Airbnb",
+    title: "Product Designer",
+    location: "San Francisco, CA",
+    workType: "hybrid",
+    level: "any",
+    salary: "$140K - $180K",
+    skills: ["Figma", "User Research", "Prototyping"],
+    logo: "https://logo.clearbit.com/airbnb.com",
+    applyUrl: "https://airbnb.com/careers",
+    sponsored: true,
+    priority: 3,
+  },
+  // 일반 채용공고
   {
     id: "fallback-1",
     company: "TechCorp",
@@ -812,8 +1429,10 @@ const JOBS_FALLBACK = [
     level: "junior",
     salary: "₩40M - ₩60M",
     skills: ["React", "JavaScript", "CSS"],
-    logo: "https://logo.clearbit.com/techcorp.com",
+    logo: "https://logo.clearbit.com/google.com",
     applyUrl: "https://techcorp.com/careers",
+    sponsored: false,
+    priority: 10,
   },
   {
     id: "fallback-2",
@@ -824,8 +1443,10 @@ const JOBS_FALLBACK = [
     level: "any",
     salary: "$80K - $120K",
     skills: ["Node.js", "React", "MongoDB"],
-    logo: "https://logo.clearbit.com/startupxyz.com",
+    logo: "https://logo.clearbit.com/microsoft.com",
     applyUrl: "http://startupxyz.com/",
+    sponsored: false,
+    priority: 10,
   },
   {
     id: "fallback-3",
@@ -836,7 +1457,7 @@ const JOBS_FALLBACK = [
     level: "intern",
     salary: "$6K - $8K/month",
     skills: ["Python", "Machine Learning", "SQL"],
-    logo: "https://logo.clearbit.com/bigtech.com",
+    logo: "https://logo.clearbit.com/apple.com",
     applyUrl: "https://bigtech.com/internships",
   },
   {
@@ -848,7 +1469,7 @@ const JOBS_FALLBACK = [
     level: "junior",
     salary: "$70K - $90K",
     skills: ["Figma", "User Research", "Prototyping"],
-    logo: "https://logo.clearbit.com/designstudio.com",
+    logo: "https://logo.clearbit.com/figma.com",
     applyUrl: "https://designstudio.com/careers",
   },
   {
@@ -860,7 +1481,7 @@ const JOBS_FALLBACK = [
     level: "any",
     salary: "£45K - £65K",
     skills: ["Python", "SQL", "Analytics"],
-    logo: "https://logo.clearbit.com/datacorp.com",
+    logo: "https://logo.clearbit.com/tableau.com",
     applyUrl: "https://datacorp.com/opportunities",
   },
   {
@@ -872,7 +1493,8 @@ const JOBS_FALLBACK = [
     level: "junior",
     salary: "¥6M - ¥8M",
     skills: ["React Native", "iOS", "Android"],
-    applyUrl: "#",
+    logo: "https://logo.clearbit.com/samsung.com",
+    applyUrl: "https://samsung.com/careers",
   },
   {
     id: "fallback-7",
@@ -883,7 +1505,8 @@ const JOBS_FALLBACK = [
     level: "any",
     salary: "$90K - $130K",
     skills: ["AWS", "Docker", "Kubernetes"],
-    applyUrl: "#",
+    logo: "https://logo.clearbit.com/amazon.com",
+    applyUrl: "https://amazon.jobs",
   },
   {
     id: "fallback-8",
@@ -894,7 +1517,8 @@ const JOBS_FALLBACK = [
     level: "any",
     salary: "$100K - $150K",
     skills: ["Python", "TensorFlow", "Deep Learning"],
-    applyUrl: "#",
+    logo: "https://logo.clearbit.com/openai.com",
+    applyUrl: "https://openai.com/careers",
   },
   {
     id: "fallback-9",
@@ -905,7 +1529,8 @@ const JOBS_FALLBACK = [
     level: "junior",
     salary: "S$60K - S$80K",
     skills: ["Java", "Spring Boot", "PostgreSQL"],
-    applyUrl: "#",
+    logo: "https://logo.clearbit.com/paypal.com",
+    applyUrl: "https://paypal.com/careers",
   },
   {
     id: "fallback-10",
@@ -916,7 +1541,8 @@ const JOBS_FALLBACK = [
     level: "any",
     salary: "C$70K - C$95K",
     skills: ["Unity", "C#", "Game Design"],
-    applyUrl: "#",
+    logo: "https://logo.clearbit.com/unity.com",
+    applyUrl: "https://unity.com/careers",
   },
   {
     id: "fallback-11",

@@ -1,3 +1,21 @@
+/* === Custom Colors === */
+:root {
+  --coral-500: #ff6b6b;
+  --navy-600: #1e3a8a;
+}
+
+.text-coral-500 {
+  color: var(--coral-500);
+}
+
+.bg-coral-500 {
+  background-color: var(--coral-500);
+}
+
+.text-navy-600 {
+  color: var(--navy-600);
+}
+
 /* === Progress Bar === */
 .bar {
   width: 100%;
@@ -137,4 +155,52 @@
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* === Enhanced Swipe Animations === */
+.job-card.swipe-right {
+  transform: translateX(100px) rotate(15deg);
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.3);
+}
+
+.job-card.swipe-left {
+  transform: translateX(-100px) rotate(-15deg);
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+}
+
+/* === Like Button Hover Effect === */
+#likeBtn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+  transition: all 0.2s ease;
+}
+
+#passBtn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 15px rgba(107, 114, 128, 0.4);
+  transition: all 0.2s ease;
+}
+
+/* === Card Hover Effects === */
+.job-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 25px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+}
+
+/* === Pulse Animation for Confidence Badge === */
+.confidence-pulse {
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
 }

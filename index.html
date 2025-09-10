@@ -3,10 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Swipe Jobs · Swipe to Match Jobs</title>
+    <title>JobSwipe · Swipe to Match Jobs</title>
     <link rel="stylesheet" href="style.css" />
     <!-- Tailwind CDN for quick styling -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- jsPDF for PDF generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   </head>
   <body
     class="min-h-screen bg-gradient-to-b from-slate-50 to-slate-200 text-slate-900"
@@ -15,9 +17,10 @@
     <header class="max-w-7xl mx-auto p-8">
       <h1
         id="mainTitle"
-        class="text-4xl font-extrabold cursor-pointer hover:opacity-80 transition-opacity"
+        class="text-4xl font-extrabold cursor-pointer hover:opacity-90 transition-all duration-200"
+        title="Click to reset all data"
       >
-        Swipe Jobs
+        JobSwipe
       </h1>
       <p class="text-base text-slate-600 mt-2">
         Create your profile, swipe job cards like a dating app, and view your
@@ -33,7 +36,7 @@
       >
         <div class="max-w-md mx-auto">
           <div class="text-6xl mb-6">🔐</div>
-          <h2 class="text-3xl font-bold mb-6">Welcome to Swipe Jobs!</h2>
+          <h2 class="text-3xl font-bold mb-6">Welcome to JobSwipe!</h2>
           <p class="text-lg text-slate-600 mb-8">
             Sign in to save your profile and track your job matches.
           </p>
@@ -80,7 +83,7 @@
       >
         <div class="max-w-4xl mx-auto">
           <div class="text-8xl mb-6">💼</div>
-          <h2 class="text-4xl font-bold mb-6">Welcome to Swipe Jobs!</h2>
+          <h2 class="text-4xl font-bold mb-6">Welcome to JobSwipe!</h2>
           <p class="text-xl text-slate-600 mb-8">
             Swipe through job opportunities like a dating app. Find your perfect
             career match with our AI-powered matching system.
@@ -189,6 +192,20 @@
               <option value="junior">Junior</option>
             </select>
           </div>
+          <div>
+            <label class="block text-base font-medium mb-2"
+              >Minimum Expected Salary</label
+            >
+            <input
+              id="pfMinSalary"
+              type="number"
+              class="w-full rounded-lg border p-3 text-base"
+              placeholder="e.g., 50000 (USD per year)"
+            />
+            <p class="text-xs text-slate-500 mt-1">
+              Leave empty for any salary
+            </p>
+          </div>
         </div>
 
         <div class="flex flex-wrap gap-4 mt-8">
@@ -285,8 +302,17 @@
         <h3 class="mt-6 text-lg font-semibold">Top Matches</h3>
         <div id="topMatches" class="mt-3 grid gap-4"></div>
 
+        <h3 class="mt-6 text-lg font-semibold">💰 Top 5 High Salary Matches</h3>
+        <div id="highSalaryMatches" class="mt-3 grid gap-4"></div>
+
+        <h3 class="mt-6 text-lg font-semibold">🎯 Your Swipe Insights</h3>
+        <div id="insightsBadges" class="mt-3 flex flex-wrap gap-3"></div>
+
         <h3 class="mt-6 text-lg font-semibold">Your Favorites</h3>
         <ul id="favoritesList" class="mt-3 list-disc pl-6 text-base"></ul>
+
+        <h3 class="mt-6 text-lg font-semibold">📝 Applied Jobs</h3>
+        <ul id="appliedList" class="mt-3 list-disc pl-6 text-base"></ul>
 
         <h3 class="mt-6 text-lg font-semibold">Recommended Actions</h3>
         <ul id="actionsList" class="mt-3 list-disc pl-6 text-base"></ul>
@@ -294,6 +320,18 @@
         <div class="mt-8 flex flex-wrap gap-4">
           <button id="copyReport" class="px-6 py-3 text-base rounded-xl border">
             Copy Report
+          </button>
+          <button
+            id="downloadPDF"
+            class="px-6 py-3 text-base rounded-xl bg-red-600 text-white hover:opacity-90"
+          >
+            📄 Download PDF
+          </button>
+          <button
+            id="shareReport"
+            class="px-6 py-3 text-base rounded-xl bg-blue-600 text-white hover:opacity-90"
+          >
+            🔗 Share Report
           </button>
           <button
             id="backToSwipe"
@@ -312,7 +350,7 @@
     </main>
 
     <footer class="max-w-7xl mx-auto p-6 text-base text-slate-500">
-      © 2025 Swipe Jobs · Demo MVP
+      © 2025 JobSwipe · Demo MVP
     </footer>
 
     <script src="app.js"></script>
