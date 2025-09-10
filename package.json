@@ -1,0 +1,21 @@
+{
+  "name": "job-ting",
+  "version": "1.0.0",
+  "description": "Swipe jobs like a dating app",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "keywords": [
+    "jobs",
+    "swipe",
+    "matching",
+    "career"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
