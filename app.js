@@ -31,7 +31,6 @@ const progressFill = $("progressFill");
 const confidenceBadge = $("confidenceBadge");
 const profileSummary = $("profileSummary");
 const topMatches = $("topMatches");
-const highSalaryMatches = $("highSalaryMatches");
 const insightsBadges = $("insightsBadges");
 const favoritesList = $("favoritesList");
 const appliedList = $("appliedList");
@@ -922,48 +921,6 @@ function showReport() {
     .join("");
 
   // High Salary Matches
-  const highSalaryJobs = matches
-    .filter((job) => job.parsedSalary && job.parsedSalary > 0)
-    .sort((a, b) => b.parsedSalary - a.parsedSalary)
-    .slice(0, 5);
-
-  highSalaryMatches.innerHTML =
-    highSalaryJobs.length > 0
-      ? highSalaryJobs
-          .map(
-            (job) => `
-      <div class="p-4 border-2 border-yellow-200 rounded-lg shadow-sm hover:shadow-md transition-shadow mb-3 bg-gradient-to-r from-yellow-50 to-orange-50">
-        <div class="flex justify-between items-start">
-          <div>
-            <h4 class="font-medium text-lg">${job.title}</h4>
-            <p class="text-sm text-slate-600 mt-1"><span class="company-badge">${
-              job.company
-            }</span> · ${job.location}</p>
-            <p class="text-lg font-bold text-green-600 mt-2">${job.salary}</p>
-            <div class="flex flex-wrap gap-1 mt-2">
-              ${(job.skills || [])
-                .slice(0, 3)
-                .map(
-                  (s) =>
-                    `<span class="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">${s}</span>`
-                )
-                .join("")}
-            </div>
-          </div>
-          <div class="text-right">
-            <span class="text-xs bg-green-100 text-green-800 px-3 py-2 rounded-full font-medium">
-              ${Math.round(job.score * 100)}% match
-            </span>
-            <div class="text-xs text-slate-500 mt-1">
-              $${job.parsedSalary.toLocaleString()}/year
-            </div>
-          </div>
-        </div>
-      </div>
-    `
-          )
-          .join("")
-      : '<div class="text-center text-slate-500 py-8">No salary information available for your liked jobs.</div>';
 
   // Insights Badges
   const insights = generateInsights();
